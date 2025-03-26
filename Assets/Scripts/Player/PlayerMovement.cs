@@ -1,80 +1,43 @@
 using UnityEngine;
-using UniRx;
+using Zenject;
 
 public class PlayerMovement : MonoBehaviour
 {
-    [SerializeField]
+    [Inject]
     private PlayerInput playerInput;
 
-    [SerializeField]
-    private LayerMask groundLayer;
+    [Inject]
+    private PlayerGravity playerGravity;
+
+    [Inject]
+    private PlayerGroundContact playerGroundContact;
 
     [SerializeField]
-    private float rayLength, moveSpeed;
+    private float speed;
 
     private Rigidbody2D rb;
 
-    private RaycastHit2D hit;
-
-    private CapsuleCollider2D coll;
-
-    private bool onGround, onSlope;
-
-    private Vector2 playerPerpendicular;
-
-    private CompositeDisposable disposable = new CompositeDisposable();
+    private float directionalSpeed;
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
-        coll = GetComponent<CapsuleCollider2D>();
     }
 
     private void FixedUpdate()
     {
-        SlopeCheck();
-        Movement(playerInput.movementAction.ReadValue<Vector2>());
+        playerGravity.CheckSlope();
+        Movement(playerInput.GetKeyboardInput());
+        playerGravity.Gravity(rb);
     }
 
-    private void SlopeCheck()
+    private void Movement(Vector2 direction)
     {
-        Vector2 bottom = transform.position - new Vector3(0f, coll.bounds.size.y / 2f);
-
-        if (hit = Physics2D.Raycast(bottom, Vector2.down * rayLength, rayLength, groundLayer))
+        if (playerGravity.IsTouchingGround())
         {
-            playerPerpendicular = Vector2.Perpendicular(hit.normal).normalized;
-
-            onGround = true;
-            float angle = Vector2.Angle(hit.normal, Vector2.up);
-            onSlope = angle > 0 ? true : false;
+            directionalSpeed = speed * Time.fixedDeltaTime * direction.x;
+            if (!playerGravity.onSlope) rb.velocity = new Vector2(directionalSpeed, rb.velocity.y);
+            else rb.velocity = new Vector2(-playerGravity.perpendicular.x, -playerGravity.perpendicular.y) * directionalSpeed;
         }
-        else
-        {
-            onGround = false;
-            onSlope = false;
-        }
-
-        Debug.DrawRay(bottom, Vector2.down * rayLength, Color.red);
-    }
-
-    public void Movement(Vector2 direction)
-    {
-        if (onGround && !onSlope)
-        {
-            rb.velocity = new Vector2(direction.x * moveSpeed * Time.fixedDeltaTime, rb.velocity.y);
-        }
-        else if (onGround && onSlope)
-        {
-            rb.velocity = new Vector2(-direction.x * playerPerpendicular.x * moveSpeed * Time.fixedDeltaTime, rb.velocity.y);
-        }
-        else if (!onGround)
-        {
-            rb.velocity = new Vector2(0f, rb.velocity.y);
-        }
-    }
-
-    public void MovementCancel()
-    {
-        disposable.Clear();
     }
 }

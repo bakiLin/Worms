@@ -3,12 +3,9 @@ using UnityEngine.InputSystem;
 
 public class PlayerInput : MonoBehaviour
 {
-    [SerializeField]
-    private PlayerMovement playerMovement;
-
     private KeyboardInputAction keyboardInputAction;
 
-    public InputAction movementAction;
+    private InputAction movementAction;
 
     private void Awake()
     {
@@ -19,5 +16,10 @@ public class PlayerInput : MonoBehaviour
     private void OnEnable()
     {
         keyboardInputAction.Enable();
+    }
+
+    public Vector2 GetKeyboardInput()
+    {
+        return movementAction.ReadValue<Vector2>();
     }
 }
