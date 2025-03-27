@@ -2,197 +2,214 @@
 using System.Linq;
 using UnityEngine;
 
+public class Segment
+{
+    public Point A, B;
+    public List<Point> CrossPoints = new List<Point>();
+}
+
+[System.Serializable]
+public class Point
+{
+    public Vector2 Position;
+    public Point NextPoint;
+    public bool IsCross;
+    public Segment LandSegment, CircleSegment;
+}
+
+[System.Serializable]
+public class Line
+{
+    public List<Point> Points;
+    public List<Segment> Segments;
+}
+
 public class Cutter : MonoBehaviour
 {
     [SerializeField] 
     private PolygonCollider2D landCollider;
 
     [SerializeField] 
-    private int testIterations = 10;
+    int iterations;
+
+    private Intersection intersection;
 
     private PolygonCollider2D circleCollider;
 
     private void Awake()
     {
+        intersection = new Intersection();
         circleCollider = GetComponent<PolygonCollider2D>();
     }
 
     public void DoCut()
     {
-        // Делаем из коллайдера круга объект Line
-        List<Vector2> circlePointsPositions = circleCollider.GetPath(0).ToList();
-        for (int i = 0; i < circlePointsPositions.Count; i++)
-            circlePointsPositions[i] = circleCollider.transform.TransformPoint(circlePointsPositions[i]);
-        Line circleLine = LineFromCollider(circlePointsPositions);
+        List<Vector2> _circlePointsPositions = circleCollider.GetPath(0).ToList();
+        for (int i = 0; i < _circlePointsPositions.Count; i++)
+        {
+            _circlePointsPositions[i] = circleCollider.transform.TransformPoint(_circlePointsPositions[i]);
+        }
+        Line circleLine = LineFromCollider(_circlePointsPositions);
+
 
         List<List<Point>> allSplines = new List<List<Point>>();
-        for (int i = 0; i < landCollider.pathCount; i++) // Проходимся по всем путям коллайдера
+        for (int p = 0; p < landCollider.pathCount; p++)
         {
-            List<Vector2> _linePointsPositions = landCollider.GetPath(i).ToList();
-            for (int j = 0; j < _linePointsPositions.Count; j++)
-                _linePointsPositions[j] = landCollider.transform.TransformPoint(_linePointsPositions[j]);
-            Line landLine = LineFromCollider(_linePointsPositions);
-            
-            for (int j = 0; j < landLine.points.Count; j++) // Надо проверить, что начальная точка снаружи
+            List<Vector2> _linePointsPositions = landCollider.GetPath(p).ToList();
+            for (int i = 0; i < _linePointsPositions.Count; i++)
             {
-                if (circleCollider.ClosestPoint(landLine.points[0].position) == landLine.points[0].position)
+                _linePointsPositions[i] = landCollider.transform.TransformPoint(_linePointsPositions[i]);
+            }
+            Line landLine = LineFromCollider(_linePointsPositions);
+
+            for (int i = 0; i < landLine.Points.Count; i++)
+            {
+                if (circleCollider.ClosestPoint(landLine.Points[0].Position) == landLine.Points[0].Position)
                 {
-                    ReorderList(landLine.points);
-                    ReorderList(landLine.segments);
+                    ReorderList(landLine.Points);
+                    ReorderList(landLine.Segments);
                 }
-                else 
+                else
                     break;
             }
+
             var result = Substraction(landLine, circleLine);
             allSplines.InsertRange(0, result);
         }
+
         landCollider.GetComponent<Land>().SetPath(allSplines);
     }
 
-    private List<List<Point>> Substraction(Line landLine, Line circleLine)
+    public List<List<Point>> Substraction(Line landLine, Line circleLine)
     {
-        for (int i = 0; i < circleLine.points.Count; i++) // Ставим дефолтные NextPoint для круга
+        for (int i = 0; i < circleLine.Points.Count; i++)
         {
-            int nextIndex = GetNext(i, circleLine.points.Count, false);
-            circleLine.points[i].nextPoint = circleLine.points[nextIndex];
+            int nextIndex = GetNext(i, circleLine.Points.Count, false);
+            circleLine.Points[i].NextPoint = circleLine.Points[nextIndex];
         }
 
-        // Перебираем все сегменты, создаем точки пересечения
-        for (int l = 0; l < landLine.segments.Count; l++)
+        for (int l = 0; l < landLine.Segments.Count; l++)
         {
-            Segment landSegment = landLine.segments[l];
-            Vector2 al = landSegment.A.position;
-            Vector2 bl = landSegment.B.position;
-            // Смотрим какие сегменты круга пересекают этот сегмент
-            // Тут надо учесть что пересечения может быть два
-            for (int c = 0; c < circleLine.segments.Count; c++)
+            Segment landSegment = landLine.Segments[l];
+            Vector2 al = landSegment.A.Position;
+            Vector2 bl = landSegment.B.Position;
+            for (int c = 0; c < circleLine.Segments.Count; c++)
             {
-                Segment circleSegment = circleLine.segments[c];
-                Vector2 ac = circleLine.segments[c].A.position;
-                Vector2 bc = circleLine.segments[c].B.position;
+                Segment circleSegment = circleLine.Segments[c];
+                Vector2 ac = circleLine.Segments[c].A.Position;
+                Vector2 bc = circleLine.Segments[c].B.Position;
 
-                if (Intersection.IsIntersecting(al, bl, ac, bc))
+                if (intersection.IsIntersecting(al, bl, ac, bc))
                 {
-                    Vector2 position = Intersection.GetIntersection(al, bl, ac, bc);
+                    Vector2 position = intersection.GetIntersection(al, bl, ac, bc);
                     Point crossPoint = new Point();
-                    crossPoint.position = position;
-                    crossPoint.landSegment = landSegment;
-                    crossPoint.circleSegment = circleSegment;
-                    crossPoint.isCross = true;
-                    landSegment.crossPoints.Add(crossPoint);
-                    circleSegment.crossPoints.Add(crossPoint);
+                    crossPoint.Position = position;
+                    crossPoint.LandSegment = landSegment;
+                    crossPoint.CircleSegment = circleSegment;
+                    crossPoint.IsCross = true;
+                    landSegment.CrossPoints.Add(crossPoint);
+                    circleSegment.CrossPoints.Add(crossPoint);
                 }
             }
         }
 
-        // Собираем новый массив точек с учетом пересечений
         RecalculateLine(landLine);
         RecalculateLine(circleLine);
 
-        AllPoints(landLine, circleLine);
-        return AllSplines(landLine);
-    }
-
-    private void AllPoints(Line landLine, Line circleLine)
-    {
-        List<Point> allPoints = new List<Point>(landLine.points);
-        bool onLand = true;
-        Point startPoint = allPoints[0];
-        while (allPoints.Count > 0)
         {
-            Point thePoint = allPoints[0];
-            //смотрим находится ли точка снаружи
-            if (circleCollider.ClosestPoint(thePoint.position) == thePoint.position || thePoint.isCross)
+            List<Point> allPoints = new List<Point>(landLine.Points);
+            bool onLand = true;
+            Point startPoint = allPoints[0];
+            while (allPoints.Count > 0)
             {
-                allPoints.RemoveAt(0);
-                continue;
-            }
-            // Собираем точки по цепочке назначаем им NextPoint
-            for (int i = 0; i < testIterations; i++)
-            {
-                Line currentLine;
-                // ccw -- против часовой стрелки
-                bool ccw;
-                if (onLand)
+                Point thePoint = allPoints[0];
+                if (circleCollider.ClosestPoint(thePoint.Position) == thePoint.Position || thePoint.IsCross)
                 {
-                    currentLine = landLine;
-                    ccw = true;
+                    allPoints.RemoveAt(0);
+                    continue;
+                }
+
+                for (int i = 0; i < iterations; i++)
+                {
+                    Line currentLine;
+                    bool ccw;
+                    if (onLand)
+                    {
+                        currentLine = landLine;
+                        ccw = true;
+                    }
+                    else
+                    {
+                        currentLine = circleLine;
+                        ccw = false;
+                    }
+
+                    int currentIndex = currentLine.Points.IndexOf(thePoint);
+                    int nextIndex = GetNext(currentIndex, currentLine.Points.Count, ccw);
+                    thePoint.NextPoint = currentLine.Points[nextIndex];
+                    allPoints.Remove(thePoint);
+                    if (thePoint.NextPoint.IsCross) onLand = !onLand;
+                    thePoint = thePoint.NextPoint;
+                    if (startPoint == thePoint) break;
+                }
+            }
+        }
+
+        {
+            List<List<Point>> allSplines = new List<List<Point>>();
+            List<Point> allPoints = new List<Point>(landLine.Points);
+            while (allPoints.Count > 0)
+            {
+                Point thePoint = allPoints[0];
+                if (circleCollider.ClosestPoint(thePoint.Position) == thePoint.Position || thePoint.IsCross)
+                {
+                    allPoints.RemoveAt(0);
+                    continue;
                 }
                 else
                 {
-                    currentLine = circleLine;
-                    ccw = false;
-                }
+                    List<Point> newSpline = new List<Point>();
+                    allSplines.Add(newSpline);
+                    Point startPoint = thePoint;
+                    Point point = thePoint;
 
-                int currentIndex = currentLine.points.IndexOf(thePoint);
-                int nextIndex = GetNext(currentIndex, currentLine.points.Count, ccw);
-                thePoint.nextPoint = currentLine.points[nextIndex];
-                allPoints.Remove(thePoint);
-                if (thePoint.nextPoint.isCross) onLand = !onLand;
-                thePoint = thePoint.nextPoint;
-                if (startPoint == thePoint) break;
-            }
-        }
-    }
-
-    private List<List<Point>> AllSplines(Line landLine)
-    {
-        List<List<Point>> allSplines = new List<List<Point>>();
-        List<Point> allPoints = new List<Point>(landLine.points);
-        while (allPoints.Count > 0)
-        {
-            Point thePoint = allPoints[0];
-            //смотрим находится ли точка снаружи
-            if (circleCollider.ClosestPoint(thePoint.position) == thePoint.position || thePoint.isCross)
-            {
-                allPoints.RemoveAt(0);
-                continue;
-            }
-            else
-            {
-                List<Point> newSpline = new List<Point>();
-                allSplines.Add(newSpline);
-
-                // Собираем точки по цепочке
-                Point startPoint = thePoint;
-                Point point = thePoint;
-
-                newSpline.Add(point);
-                allPoints.Remove(point);
-                for (int i = 0; i < testIterations; i++)
-                {
-                    point = point.nextPoint;
-                    if (point == startPoint) break;
                     newSpline.Add(point);
-                    if (allPoints.Contains(point)) allPoints.Remove(point);
+                    allPoints.Remove(point);
+                    for (int i = 0; i < iterations; i++)
+                    {
+                        point = point.NextPoint;
+                        if (point == startPoint) break;
+                        newSpline.Add(point);
+                        if (allPoints.Contains(point)) allPoints.Remove(point);
+                    }
                 }
             }
+            return allSplines;
         }
-        return allSplines;
     }
 
-    private void RecalculateLine(Line line)
+    public void RecalculateLine(Line line)
     {
         List<Point> newPoints = new List<Point>();
-        for (int s = 0; s < line.segments.Count; s++)
+        for (int s = 0; s < line.Segments.Count; s++)
         {
-            Segment segment = line.segments[s];
+            Segment segment = line.Segments[s];
             newPoints.Add(segment.A);
-            if (segment.crossPoints.Count > 0)
+            if (segment.CrossPoints.Count > 0)
             {
-                segment.crossPoints.Sort((p1, p2) =>
-                Vector3.Distance(segment.A.position, p1.position).
-                    CompareTo(Vector3.Distance(segment.A.position, p2.position)));
+                segment.CrossPoints.Sort((p1, p2) =>
+                Vector3.Distance(segment.A.Position, p1.Position).
+                    CompareTo(Vector3.Distance(segment.A.Position, p2.Position)));
             }
-            newPoints.AddRange(segment.crossPoints);
+            newPoints.AddRange(segment.CrossPoints);
         }
-        line.points = newPoints;
+        line.Points = newPoints;
     }
 
-    // Сместьть все элементы списка на 1
-    private void ReorderList<T>(List<T> list)
+    void ReorderList<T>(List<T> list)
     {
         var first = list[0];
+
         for (int i = 0; i < list.Count; i++)
         {
             if (i == list.Count - 1) list[i] = first;
@@ -200,7 +217,7 @@ public class Cutter : MonoBehaviour
         }
     }
 
-    private Line LineFromCollider(List<Vector2> list)
+    public Line LineFromCollider(List<Vector2> list)
     {
         Line line = new Line();
         List<Point> points = new List<Point>();
@@ -209,7 +226,7 @@ public class Cutter : MonoBehaviour
         for (int i = 0; i < list.Count; i++)
         {
             Point point = new Point();
-            point.position = list[i];
+            point.Position = list[i];
             points.Add(point);
         }
 
@@ -217,20 +234,19 @@ public class Cutter : MonoBehaviour
         {
             Segment segment = new Segment();
             segment.A = points[i];
-            points[i].landSegment = segment;
-            int bIndex = i + 1;
-            if (bIndex >= list.Count) bIndex = 0;
+            points[i].LandSegment = segment;
+            int bIndex = i + 1 >= list.Count ? 0 : i + 1;
             segment.B = points[bIndex];
-            points[bIndex].circleSegment = segment;
+            points[bIndex].CircleSegment = segment;
             segments.Add(segment);
         }
 
-        line.points = points;
-        line.segments = segments;
+        line.Points = points;
+        line.Segments = segments;
         return line;
     }
 
-    private int GetNext(int index, int length, bool isCCW)
+    int GetNext(int index, int length, bool isCCW)
     {
         int nextIndex = index + (isCCW ? 1 : -1);
         if (nextIndex >= length) nextIndex = 0;
