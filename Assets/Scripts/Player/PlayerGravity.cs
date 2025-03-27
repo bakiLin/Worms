@@ -4,55 +4,47 @@ using Zenject;
 public class PlayerGravity : MonoBehaviour
 {
     [Inject]
-    private PlayerGroundContact playerGroundContact;
+    private PlayerGroundContact groundContact;
 
     [SerializeField]
-    private LayerMask groundLayer;
+    private float maxSlopeAngle;
 
-    [SerializeField]
-    private float rayLength, maxSlopeAngle, gravityScale;
+    private Rigidbody2D rb;
 
-    public bool onSlope {  get; private set; }
-
-    public Vector2 perpendicular {  get; private set; }
-
-    private Vector2 bottom, gravity;
-
-    private float groundAngle;
-
-    private Collider2D coll;
-
-    private RaycastHit2D hit;
+    private Vector3 perpendicular;
 
     private void Awake()
     {
-        coll = GetComponent<Collider2D>();
+        rb = GetComponent<Rigidbody2D>();   
     }
 
-    public void CheckSlope()
+    private void FixedUpdate()
     {
-        bottom = coll.bounds.center - new Vector3(0f, coll.bounds.size.y / 2);
-
-        if (hit = Physics2D.Raycast(bottom, Vector2.down, rayLength, groundLayer))
-        {
-            groundAngle = Vector2.Angle(hit.normal, Vector2.up);
-            onSlope = groundAngle > 0f ? true : false;
-            perpendicular = Vector2.Perpendicular(hit.normal).normalized;
-        }
+        SlopeCheck();
+        Gravity();
     }
 
-    public void Gravity(Rigidbody2D rb)
+    private void SlopeCheck()
     {
-        if (groundAngle > maxSlopeAngle || groundAngle == 0f)
+        if (groundContact.IsTouchingGround())
         {
-            rb.AddForce(Physics.gravity * 1f, ForceMode2D.Force);
-        }
-        else if (groundAngle > 0f)
-        {
-            gravity = (playerGroundContact.contactPoint - transform.position) * Physics2D.gravity.magnitude;
-            rb.AddForce(gravity * gravityScale, ForceMode2D.Force);
+            perpendicular = Vector2.Perpendicular(groundContact.GetNormal());
         }
     }
 
-    public bool IsTouchingGround() => hit.collider != null;
+    private void Gravity()
+    {
+        if (!groundContact.IsTouchingGround() || perpendicular.x + perpendicular.y >= 0.99f)
+        {
+            rb.AddForce(Physics2D.gravity, ForceMode2D.Force);
+        } 
+        else if (groundContact.ContactAngle() > maxSlopeAngle)
+        {
+            rb.AddForce(perpendicular, ForceMode2D.Force);
+        }
+    }
+
+    public Vector2 GetPerpendicular() => -perpendicular;
+
+    public bool IsMovable() => groundContact.IsTouchingGround() && groundContact.ContactAngle() < maxSlopeAngle;
 }
